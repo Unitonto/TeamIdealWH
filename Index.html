@@ -1,0 +1,168 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <title>Simulador WH</title>
+    <script src="https://cdn.sheetjs.com/xlsx-latest/package/dist/xlsx.full.min.js"></script>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            margin: 0;
+            background-color: #1c1c1c;
+            color: #f97316; /* Naranja fuerte */
+        }
+        header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            background-color: #0d0d0d;
+            padding: 10px 20px;
+        }
+        #logo {
+            height: 40px;
+        }
+        #uploadButton {
+            padding: 6px 12px;
+            font-size: 12px;
+            cursor: pointer;
+            background-color: #f97316;
+            color: white;
+            border: none;
+            border-radius: 5px;
+        }
+        main {
+            padding: 20px;
+        }
+        input, button {
+            margin: 10px 0;
+            padding: 10px;
+            border-radius: 5px;
+            border: none;
+            font-size: 16px;
+        }
+        #targetInput {
+            width: 250px;
+        }
+        button {
+            background-color: #f97316;
+            color: white;
+            cursor: pointer;
+        }
+        #consoleOutput {
+            margin-top: 20px;
+            background: #2c2c2c;
+            padding: 20px;
+            border-radius: 8px;
+            font-family: monospace;
+            white-space: pre-wrap;
+        }
+    </style>
+</head>
+<body>
+
+<header>
+    <img id="logo" src="logo.png" alt="Logo"> <!-- Puedes cambiar el src -->
+    <button id="uploadButton" onclick="document.getElementById('fileInput').click()">📄 Cargar Excel</button>
+    <input type="file" id="fileInput" accept=".xlsx" style="display:none" onchange="loadExcel(event)">
+</header>
+
+<main>
+    <h1>Cantidad de Bultos Promedio por dia</h1>
+    <input type="number" id="targetInput" placeholder="Ingrese objetivo (Ej 2000)" />
+    <button onclick="findTeam()">Buscar equipo</button>
+
+    <div id="consoleOutput"></div>
+</main>
+
+<script>
+    let workbookData = null;
+
+    function loadExcel(event) {
+        const file = event.target.files[0];
+        const reader = new FileReader();
+        reader.onload = function (e) {
+            const data = new Uint8Array(e.target.result);
+            const workbook = XLSX.read(data, { type: 'array' });
+            workbookData = workbook;
+            logConsole("✅ Archivo cargado exitosamente.");
+            calculateTotalBultos();
+        };
+        reader.readAsArrayBuffer(file);
+    }
+
+    function findTeam() {
+        const target = parseFloat(document.getElementById('targetInput').value);
+        if (!workbookData) {
+            logConsole("⚠️ Primero debes cargar un archivo Excel.");
+            return;
+        }
+
+        const sheetName = workbookData.SheetNames[0];
+        const worksheet = workbookData.Sheets[sheetName];
+        const jsonData = XLSX.utils.sheet_to_json(worksheet);
+
+        // Calcular productividad promedio
+        const productivityMap = {};
+        jsonData.forEach(row => {
+            if (!productivityMap[row.PICKERO]) {
+                productivityMap[row.PICKERO] = [];
+            }
+            productivityMap[row.PICKERO].push(row['#BULTOS_POR_HORA']);
+        });
+
+        const avgProductivity = Object.entries(productivityMap).map(([pickero, bultosList]) => {
+            const avg = bultosList.reduce((a, b) => a + b, 0) / bultosList.length;
+            return { pickero, avg };
+        });
+
+        // Buscar combinación
+        const workers = avgProductivity;
+        const max_iter = 10000;
+        for (let i = 0; i < max_iter; i++) {
+            const subset_size = Math.floor(Math.random() * Math.min(14, workers.length)) + 1;
+            const team = [];
+            for (let j = 0; j < subset_size; j++) {
+                const randomIndex = Math.floor(Math.random() * workers.length);
+                team.push(workers[randomIndex]);
+            }
+            const total = team.reduce((sum, worker) => sum + worker.avg, 0);
+            if (total >= target && total < (target + 200)) {
+                showResult(team, total);
+                return;
+            }
+        }
+        logConsole("🚫 No se encontró una combinación válida.");
+    }
+
+    function showResult(team, total) {
+        let output = "✅ Trabajadores seleccionados:\n\n";
+        team.forEach(worker => {
+            output += `- ${worker.pickero}: ${worker.avg.toFixed(2)} bultos/hora\n`;
+        });
+        output += `\n📈 Suma total de productividad: ${total.toFixed(2)} bultos/hora`;
+        logConsole(output);
+    }
+
+    function calculateTotalBultos() {
+        if (!workbookData) return;
+        const sheetName = workbookData.SheetNames[0];
+        const worksheet = workbookData.Sheets[sheetName];
+        const jsonData = XLSX.utils.sheet_to_json(worksheet);
+
+        let totalBultos = 0;
+        jsonData.forEach(row => {
+            totalBultos += parseFloat(row['#BULTOS_POR_HORA']) || 0;
+        });
+
+        const promedioBultosPorPickero = 150; // Asumimos 150 bultos/hora promedio
+        const cantidadPickeros = Math.ceil(totalBultos / promedioBultosPorPickero);
+    }
+
+    function logConsole(message) {
+        document.getElementById('consoleOutput').innerText = message;
+    }
+</script>
+
+</body>
+</html>
+
